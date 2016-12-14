@@ -10,6 +10,8 @@
 #include <ppmwrite.h>
 #include <mpi.h>
 
+#define MASTER_BLOCKSIZE 16
+
 double esecond(void) {
 
   struct timeval tp;
@@ -98,15 +100,40 @@ int main(int argc, char *argv[]) {
   MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
   
   /* initialize arrays */
-  iterations = malloc(width*height*sizeof(int));
   if (rank == 0) {
     recvbuffer = malloc(width*height*sizeof(int));
+    
+    for (ix=0; ix<width; ++ix) {
+      for (iy=0; iy<height; ++iy) {
+	recvbuffer[ix*height+iy] = 0;
+      }
+    }
   }
+
   
-  for (ix=0; ix<width; ++ix) {
-    for (iy=0; iy<height; ++iy) {
-      iterations[ix*height+iy] = 0;
-      recvbuffer[ix*height+iy] = 0;
+  if (type == 0 || type == 3) {
+    iterations = malloc(width*height*sizeof(int));
+    
+    for (ix=0; ix<width; ++ix) {
+      for (iy=0; iy<height; ++iy) {
+	iterations[ix*height+iy] = 0;
+      }
+    }
+  } else if (type == 1) {
+    iterations = malloc(height / numprocs * width * sizeof(int));
+    
+    for (ix=0; ix<width; ++ix) {
+      for (iy=0; iy<height / numprocs; ++iy) {
+	iterations[ix*height+iy] = 0;
+      }
+    }
+  } else if (type == 2) {
+    iterations = malloc(MASTER_BLOCKSIZE * MASTER_BLOCKSIZE * sizeof(int));
+    
+    for (ix=0; ix<MASTER_BLOCKSIZE; ++ix) {
+      for (iy=0; iy<MASTER_BLOCKSIZE; ++iy) {
+	iterations[ix*height+iy] = 0;
+      }
     }
   }
 
@@ -222,7 +249,7 @@ void calcBlock(int *iterations, int width, int height, int myid, int numprocs,
   dy = (ymax - ymin) / height;
 
   y = ymin;
-  for (iy=0; iy<height; ++iy) {
+  for (iy=0; iy<height/numprocs; ++iy) {
     x = xmin;
     for (ix=0; ix<width; ix++) {
       double zx=0.0,zy=0.0,zxnew;
@@ -239,6 +266,8 @@ void calcBlock(int *iterations, int width, int height, int myid, int numprocs,
     }
     y += dy;
   }
+  
+  MPI_Gather(iterations, height/numprocs * width, MPI_INT, recvbuf, height/numprocs * width, MPI_INT, 0, MPI_COMM_WORLD);
 }
 
 void calcMaster(int *iterations, int width, int height, int myid, int numprocs,
@@ -248,11 +277,11 @@ void calcMaster(int *iterations, int width, int height, int myid, int numprocs,
 
   dx = (xmax - xmin) / width;
   dy = (ymax - ymin) / height;
-
+  
   y = ymin;
-  for (iy=0; iy<height; ++iy) {
+  for (iy=0; iy<MASTER_BLOCKSIZE; ++iy) {
     x = xmin;
-    for (ix=0; ix<width; ix++) {
+    for (ix=0; ix<MASTER_BLOCKSIZE; ix++) {
       double zx=0.0,zy=0.0,zxnew;
       int count = 0;
       while ( zx*zx+zy*zy < 16*16 && count < maxiter ) {
