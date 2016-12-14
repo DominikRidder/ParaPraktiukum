@@ -8,6 +8,9 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <ppmwrite.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 double esecond(void) {
 
@@ -138,6 +141,7 @@ void calc(int *iterations, int width, int height, int myid, int numprocs,
   dy = (ymax - ymin) / height;
 
   y = ymin;
+#pragma omp parallel for private(x, y)
   for (iy=0; iy<height; ++iy) {
     x = xmin;
     for (ix=0; ix<width; ix++) {
