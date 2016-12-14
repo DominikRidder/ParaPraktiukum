@@ -8,7 +8,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <ppmwrite.h>
-#include <mpi.h>
+
 
 double esecond(void) {
 
@@ -54,9 +54,7 @@ int main(int argc, char *argv[]) {
   int    i;
   double st,timeused,calctime=0.0, waittime=0.0, iotime=0.0;
   char   filename[1024];
-  
-  MPI_Init(&argc, &argv);
-  
+
   ppminitsmooth(1);
 
   /* parse command line */
@@ -94,15 +92,10 @@ int main(int argc, char *argv[]) {
     i++;
   }
 
-  MPI_Comm_rank(MPI_COMM_WORLD, &myid);
-  MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
-  
   /* initialize arrays */
   iterations = malloc(width*height*sizeof(int));
-  if (rank == 0) {
-    recvbuffer = malloc(width*height*sizeof(int));
-  }
-  
+  recvbuffer = malloc(width*height*sizeof(int));
+
   for (ix=0; ix<width; ++ix) {
     for (iy=0; iy<height; ++iy) {
       iterations[ix*height+iy] = 0;
@@ -110,8 +103,9 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  //numprocs = 1;
-  //myid     = 0;
+  numprocs = 1;
+  myid     = 0;
+
 
   /* start calculation */
   if(verbose) {
@@ -121,19 +115,7 @@ int main(int argc, char *argv[]) {
   }
 
   st = esecond();
-  switch(type) {
-    case 0:
-      calcRow(iterations, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter ); break;
-    case 1:
-      calcBlock(iterations, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter ); break;
-    case 2:
-      calcMaster(iterations, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter ); break;
-    case 3:
-      calc(iterations, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter ); break;
-    default:
-      printf("Please use a type from 0-3!\n");
-      MPI_Abort(1, MPI_COMM_WORLD);
-  }
+  calc(iterations, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter );
   timeused = esecond()-st;
   calctime += timeused;
 
@@ -146,102 +128,11 @@ int main(int argc, char *argv[]) {
   if(verbose) printf("PE%02d: calc=%7.4f,wait=%7.4f, io=%7.4f\n",
                      myid,calctime,waittime,iotime);
 
-  MPI_Finalize();
   exit(0);
 }
 
+
 void calc(int *iterations, int width, int height, int myid, int numprocs,
-         double xmin, double xmax, double ymin, double ymax, int maxiter ) {
-  double dx,dy,x,y;
-  int    ix,iy;
-
-  dx = (xmax - xmin) / width;
-  dy = (ymax - ymin) / height;
-
-  y = ymin;
-  for (iy=0; iy<height; ++iy) {
-    x = xmin;
-    for (ix=0; ix<width; ix++) {
-      double zx=0.0,zy=0.0,zxnew;
-      int count = 0;
-      while ( zx*zx+zy*zy < 16*16 && count < maxiter ) {
-        /* z = z*z + (x + i y) */
-        zxnew = zx*zx-zy*zy + x;
-        zy    = 2*zx*zy     + y;
-        zx    = zxnew;
-        ++count;
-      }
-      iterations[iy*width+ix] = count;
-      x += dx;
-    }
-    y += dy;
-  }
-}
-
-void calcRow(int *iterations, int width, int height, int myid, int numprocs,
-         double xmin, double xmax, double ymin, double ymax, int maxiter ) {
-  double dx,dy,x,y;
-  int    ix,iy;
-  MPI_type type;
-  
-  dx = (xmax - xmin) / width;
-  dy = (ymax - ymin) / height;
-
-  y = ymin;
-  for (iy=myid; iy<height; iy+=numprocs) {
-    x = xmin;
-    for (ix=0; ix<width; ix++) {
-      double zx=0.0,zy=0.0,zxnew;
-      int count = 0;
-      while ( zx*zx+zy*zy < 16*16 && count < maxiter ) {
-        /* z = z*z + (x + i y) */
-        zxnew = zx*zx-zy*zy + x;
-        zy    = 2*zx*zy     + y;
-        zx    = zxnew;
-        ++count;
-      }
-      iterations[iy*width+ix] = count;
-      x += dx;
-    }
-    y += dy;
-  }
-  
-  //MPI_Type_vector(height / numprocs, width, width * numprocs, MPI_INT, &type);
-  //MPI_Type_commit(&type);
-  //MPI_Reduce(&iterations[myid], recvbuf, 1, type, MPI_SUM, 0, MPI_COMM_WORLD);
-  //MPI_Type_free(&type);
-  MPI_Reduce(iterations, recvbuf, width * height, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
-}
-
-void calcBlock(int *iterations, int width, int height, int myid, int numprocs,
-         double xmin, double xmax, double ymin, double ymax, int maxiter ) {
-  double dx,dy,x,y;
-  int    ix,iy;
-
-  dx = (xmax - xmin) / width;
-  dy = (ymax - ymin) / height;
-
-  y = ymin;
-  for (iy=0; iy<height; ++iy) {
-    x = xmin;
-    for (ix=0; ix<width; ix++) {
-      double zx=0.0,zy=0.0,zxnew;
-      int count = 0;
-      while ( zx*zx+zy*zy < 16*16 && count < maxiter ) {
-        /* z = z*z + (x + i y) */
-        zxnew = zx*zx-zy*zy + x;
-        zy    = 2*zx*zy     + y;
-        zx    = zxnew;
-        ++count;
-      }
-      iterations[iy*width+ix] = count;
-      x += dx;
-    }
-    y += dy;
-  }
-}
-
-void calcMaster(int *iterations, int width, int height, int myid, int numprocs,
          double xmin, double xmax, double ymin, double ymax, int maxiter ) {
   double dx,dy,x,y;
   int    ix,iy;
