@@ -10,7 +10,7 @@ PROGRAM = mandelseq
 #        mpicc        (mpi)
 #        icc -qopenmp (openmp)
 #-------------------------------------------------
-CC  = icc
+CC  = mpicc
 
 
 OBJ     = ${PROGRAM:=.o}

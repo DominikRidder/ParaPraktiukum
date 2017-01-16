@@ -35,6 +35,12 @@ void usage(char *name) {
 
 void calc(int *iterations, int width, int height, int myid, int numprocs,
          double xmin, double xmax, double ymin, double ymax, int maxiter );
+void calcRow(int *iterations, int *recvbuf, int width, int height, int myid, int numprocs,
+	  double xmin, double xmax, double ymin, double ymax, int maxiter );
+void calcBlock(int *iterations, int *recvbuf, int width, int height, int myid, int numprocs,
+	  double xmin, double xmax, double ymin, double ymax, int maxiter );
+void calcMaster(int *iterations, int *recvbuf, int width, int height, int myid, int numprocs,
+	  double xmin, double xmax, double ymin, double ymax, int maxiter );
 
 
 int main(int argc, char *argv[]) {
@@ -100,7 +106,7 @@ int main(int argc, char *argv[]) {
   MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
   
   /* initialize arrays */
-  if (rank == 0) {
+  if (myid == 0) {
     recvbuffer = malloc(width*height*sizeof(int));
     
     for (ix=0; ix<width; ++ix) {
@@ -124,7 +130,7 @@ int main(int argc, char *argv[]) {
     
     for (ix=0; ix<width; ++ix) {
       for (iy=0; iy<height / numprocs; ++iy) {
-	iterations[ix*height+iy] = 0;
+	iterations[iy*height+ix] = 0;
       }
     }
   } else if (type == 2) {
@@ -132,7 +138,7 @@ int main(int argc, char *argv[]) {
     
     for (ix=0; ix<MASTER_BLOCKSIZE; ++ix) {
       for (iy=0; iy<MASTER_BLOCKSIZE; ++iy) {
-	iterations[ix*height+iy] = 0;
+	iterations[iy*MASTER_BLOCKSIZE+ix] = 0;
       }
     }
   }
@@ -146,27 +152,36 @@ int main(int argc, char *argv[]) {
            xmin,xmax,ymin,ymax);
     fflush(stdout);
   }
+  printf("Start (id = %d, #procs = %d)\n", myid, numprocs);
 
   st = esecond();
   switch(type) {
     case 0:
-      calcRow(iterations, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter ); break;
+      calcRow(iterations, recvbuffer, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter ); break;
     case 1:
-      calcBlock(iterations, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter ); break;
+      calcBlock(iterations, recvbuffer, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter ); break;
     case 2:
-      calcMaster(iterations, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter ); break;
+      calcMaster(iterations, recvbuffer, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter ); break;
     case 3:
-      calc(iterations, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter ); break;
-    default:
+      if (myid == 0) { // single + serial
+	calc(iterations, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter );
+      }
+      recvbuffer = iterations;
+      break;
+  default:
       printf("Please use a type from 0-3!\n");
       MPI_Abort(1, MPI_COMM_WORLD);
   }
   timeused = esecond()-st;
   calctime += timeused;
 
+  printf("Returned from calculation\n");
 
   st = esecond();
-  ppmwrite(iterations,width,height,0,maxiter,"mandelcol.ppm");
+  //ppmwrite(iterations,width,height,0,maxiter,"mandelcol.ppm");
+  if (myid == 0) {
+    ppmwrite(recvbuffer,width,height,0,maxiter,"mandelcol.ppm");
+  }
 
   timeused = esecond()-st;
   iotime += timeused;
@@ -205,16 +220,16 @@ void calc(int *iterations, int width, int height, int myid, int numprocs,
   }
 }
 
-void calcRow(int *iterations, int width, int height, int myid, int numprocs,
+void calcRow(int *iterations, int *recvbuf, int width, int height, int myid, int numprocs,
          double xmin, double xmax, double ymin, double ymax, int maxiter ) {
   double dx,dy,x,y;
   int    ix,iy;
-  MPI_type type;
+  //MPI_type type;
   
   dx = (xmax - xmin) / width;
   dy = (ymax - ymin) / height;
 
-  y = ymin;
+  y = ymin + dy*myid;
   for (iy=myid; iy<height; iy+=numprocs) {
     x = xmin;
     for (ix=0; ix<width; ix++) {
@@ -230,7 +245,7 @@ void calcRow(int *iterations, int width, int height, int myid, int numprocs,
       iterations[iy*width+ix] = count;
       x += dx;
     }
-    y += dy;
+    y += dy*numprocs;
   }
   
   //MPI_Type_vector(height / numprocs, width, width * numprocs, MPI_INT, &type);
@@ -240,7 +255,7 @@ void calcRow(int *iterations, int width, int height, int myid, int numprocs,
   MPI_Reduce(iterations, recvbuf, width * height, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
 }
 
-void calcBlock(int *iterations, int width, int height, int myid, int numprocs,
+void calcBlock(int *iterations, int *recvbuf, int width, int height, int myid, int numprocs,
          double xmin, double xmax, double ymin, double ymax, int maxiter ) {
   double dx,dy,x,y;
   int    ix,iy;
@@ -248,7 +263,7 @@ void calcBlock(int *iterations, int width, int height, int myid, int numprocs,
   dx = (xmax - xmin) / width;
   dy = (ymax - ymin) / height;
 
-  y = ymin;
+  y = ymin + dy * myid * height/numprocs;
   for (iy=0; iy<height/numprocs; ++iy) {
     x = xmin;
     for (ix=0; ix<width; ix++) {
@@ -270,30 +285,92 @@ void calcBlock(int *iterations, int width, int height, int myid, int numprocs,
   MPI_Gather(iterations, height/numprocs * width, MPI_INT, recvbuf, height/numprocs * width, MPI_INT, 0, MPI_COMM_WORLD);
 }
 
-void calcMaster(int *iterations, int width, int height, int myid, int numprocs,
+void calcMaster(int *iterations, int *recvbuf, int width, int height, int myid, int numprocs,
          double xmin, double xmax, double ymin, double ymax, int maxiter ) {
   double dx,dy,x,y;
   int    ix,iy;
+  int    inwork = 0;
+  int    *buffer;
+  int    curr;
+  int    cancel = - 1;
+  int    todo = (height * width) / (MASTER_BLOCKSIZE * MASTER_BLOCKSIZE);
+  MPI_Status status;
+
+  printf("TEST (procs = %d)\n", numprocs);
+  buffer = malloc(sizeof(int) * (MASTER_BLOCKSIZE * MASTER_BLOCKSIZE + 1));
 
   dx = (xmax - xmin) / width;
   dy = (ymax - ymin) / height;
-  
+
   y = ymin;
-  for (iy=0; iy<MASTER_BLOCKSIZE; ++iy) {
-    x = xmin;
-    for (ix=0; ix<MASTER_BLOCKSIZE; ix++) {
-      double zx=0.0,zy=0.0,zxnew;
-      int count = 0;
-      while ( zx*zx+zy*zy < 16*16 && count < maxiter ) {
-        /* z = z*z + (x + i y) */
-        zxnew = zx*zx-zy*zy + x;
-        zy    = 2*zx*zy     + y;
-        zx    = zxnew;
-        ++count;
+  curr = 0;
+
+  if (myid == 0) {
+
+    for (int i = 1; i < numprocs; i++) {
+      printf("MASTER: Initial work spreading\n");
+      MPI_Send(&curr, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+      curr++;
+      inwork++;
+    } 
+
+    while(inwork != 0) {
+      //printf("MASTER: waiting for more jobs. (cur=%d)\n", curr);
+      MPI_Recv(buffer, MASTER_BLOCKSIZE * MASTER_BLOCKSIZE + 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+      inwork--;
+
+      y = (buffer[0] * MASTER_BLOCKSIZE/width) * dy + ymin;
+      for (iy=0; iy<MASTER_BLOCKSIZE; ++iy) {
+	x = ((buffer[0] * height) % MASTER_BLOCKSIZE) * dy + xmin;
+	for (ix=0; ix<MASTER_BLOCKSIZE; ix++) {
+	  recvbuf[iy*width+ix] = buffer[iy*MASTER_BLOCKSIZE+ix+1];
+	  x += dx;
+	}
+	y += dy;
       }
-      iterations[iy*width+ix] = count;
-      x += dx;
+
+
+      if (curr < todo) {
+	MPI_Send(&curr, 1, MPI_INT, status.MPI_SOURCE, 0, MPI_COMM_WORLD);
+	inwork++;
+	curr++;
+      } else {
+	MPI_Send(&cancel, 1, MPI_INT, status.MPI_SOURCE, 0, MPI_COMM_WORLD);
+      }
     }
-    y += dy;
+  } else {
+    while(1) {
+      MPI_Recv(&curr, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+
+      if (curr == cancel) {
+	printf("Worker canceld\n");
+	break;
+      }
+      
+      printf("Next Block: x = %d, y = %d\n", ((curr * height) % MASTER_BLOCKSIZE) * dx + xmin, (curr * width / MASTER_BLOCKSIZE) * dy + ymin);
+
+      y = (curr * width / MASTER_BLOCKSIZE) * dy + ymin; 
+       for (iy=0; iy<MASTER_BLOCKSIZE; ++iy) {
+	 x = ((curr * height) % MASTER_BLOCKSIZE) * dx + xmin ;
+	 for (ix=0; ix<MASTER_BLOCKSIZE; ix++) {
+	   double zx=0.0,zy=0.0,zxnew;
+	   int count = 0;
+	   while ( zx*zx+zy*zy < 16*16 && count < maxiter ) {
+	     /* z = z*z + (x + i y) */
+	     zxnew = zx*zx-zy*zy + x;
+	     zy    = 2*zx*zy     + y;
+	     zx    = zxnew;
+	     ++count;
+	   }
+	   buffer[iy*MASTER_BLOCKSIZE+ix + 1] = count;
+	   x += dx;
+	 }
+	 y += dy;
+       }
+
+       buffer[0] = curr;
+
+       MPI_Send(buffer, MASTER_BLOCKSIZE*MASTER_BLOCKSIZE + 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+    }
   }
 }
