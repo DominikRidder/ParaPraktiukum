@@ -288,7 +288,7 @@ void calcBlock(int *iterations, int *recvbuf, int width, int height, int myid, i
 void calcMaster(int *iterations, int *recvbuf, int width, int height, int myid, int numprocs,
          double xmin, double xmax, double ymin, double ymax, int maxiter ) {
   double dx,dy,x,y;
-  int    ix,iy;
+  int    ix,iy,xoff,yoff;
   int    inwork = 0;
   int    *buffer;
   int    curr;
@@ -319,14 +319,12 @@ void calcMaster(int *iterations, int *recvbuf, int width, int height, int myid, 
       MPI_Recv(buffer, MASTER_BLOCKSIZE * MASTER_BLOCKSIZE + 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
       inwork--;
 
-      y = (buffer[0] * MASTER_BLOCKSIZE/width) * dy + ymin;
+      xoff = (buffer[0] * MASTER_BLOCKSIZE % width);
+      yoff = (buffer[0] * MASTER_BLOCKSIZE/width) * MASTER_BLOCKSIZE * width;
       for (iy=0; iy<MASTER_BLOCKSIZE; ++iy) {
-	x = ((buffer[0] * height) % MASTER_BLOCKSIZE) * dy + xmin;
 	for (ix=0; ix<MASTER_BLOCKSIZE; ix++) {
-	  recvbuf[iy*width+ix] = buffer[iy*MASTER_BLOCKSIZE+ix+1];
-	  x += dx;
+	  recvbuf[yoff+xoff+iy*width+ix] = buffer[iy*MASTER_BLOCKSIZE+ix+1];
 	}
-	y += dy;
       }
 
 
@@ -346,12 +344,10 @@ void calcMaster(int *iterations, int *recvbuf, int width, int height, int myid, 
 	printf("Worker canceld\n");
 	break;
       }
-      
-      printf("Next Block: x = %d, y = %d\n", ((curr * height) % MASTER_BLOCKSIZE) * dx + xmin, (curr * width / MASTER_BLOCKSIZE) * dy + ymin);
 
-      y = (curr * width / MASTER_BLOCKSIZE) * dy + ymin; 
+      y = (curr * MASTER_BLOCKSIZE / width) * MASTER_BLOCKSIZE * dy + ymin;
        for (iy=0; iy<MASTER_BLOCKSIZE; ++iy) {
-	 x = ((curr * height) % MASTER_BLOCKSIZE) * dx + xmin ;
+	 x = ((curr * MASTER_BLOCKSIZE) % width) * dx + xmin;
 	 for (ix=0; ix<MASTER_BLOCKSIZE; ix++) {
 	   double zx=0.0,zy=0.0,zxnew;
 	   int count = 0;
