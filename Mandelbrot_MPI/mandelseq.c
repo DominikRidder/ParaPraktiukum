@@ -11,6 +11,8 @@
 #include <mpi.h>
 
 #define MASTER_BLOCKSIZE 16
+#define ROOT 0
+#define TAG 0
 
 double esecond(void) {
 
@@ -28,19 +30,19 @@ void usage(char *name) {
   fprintf(stderr, "  [-w <width>]              image width in pixels (256)\n");
   fprintf(stderr, "  [-h <height>]             image height in pixels (256)\n");
   fprintf(stderr, "  [-i <maxiter>]            max. number of iterations per pixel (256)\n");
-  fprintf(stderr, "  [-t <type>]               0=stride, 1=stripe, 2=blockmaster\n");
+  fprintf(stderr, "  [-t <type>]               0=stride, 1=stripe, 2=blockmaster, 3=serial\n");
   fprintf(stderr, "  [-v]                      verbose (off)\n\n");
   exit(1);
 }
 
 void calc(int *iterations, int width, int height, int myid, int numprocs,
-         double xmin, double xmax, double ymin, double ymax, int maxiter );
+	  double xmin, double xmax, double ymin, double ymax, int maxiter );
 void calcRow(int *iterations, int *recvbuf, int width, int height, int myid, int numprocs,
-	  double xmin, double xmax, double ymin, double ymax, int maxiter );
+	  double xmin, double xmax, double ymin, double ymax, int maxiter, double *mpitime, double *waittime );
 void calcBlock(int *iterations, int *recvbuf, int width, int height, int myid, int numprocs,
-	  double xmin, double xmax, double ymin, double ymax, int maxiter );
+	  double xmin, double xmax, double ymin, double ymax, int maxiter, double *mpitime, double *waittime );
 void calcMaster(int *iterations, int *recvbuf, int width, int height, int myid, int numprocs,
-	  double xmin, double xmax, double ymin, double ymax, int maxiter );
+	  double xmin, double xmax, double ymin, double ymax, int maxiter, double *mpitime, double *waittime );
 
 
 int main(int argc, char *argv[]) {
@@ -56,13 +58,15 @@ int main(int argc, char *argv[]) {
   int verbose = 0;     /* per default only print error messages */
   int type = 0;        /* per default only print error messages */
   int *iterations,*recvbuffer;
-  int    ix,iy;
+  int ix,iy;
 
   int    numprocs,myid;
   int    i;
-  double st,timeused,calctime=0.0, waittime=0.0, iotime=0.0;
+  double st,st_total,timeused;
+  double calctime=0.0, waittime=0.0, iotime=0.0, mpitime=0.0, runtime=0.0;
   char   filename[1024];
   
+  st_total = esecond();
   MPI_Init(&argc, &argv);
   
   ppminitsmooth(1);
@@ -105,9 +109,9 @@ int main(int argc, char *argv[]) {
   MPI_Comm_rank(MPI_COMM_WORLD, &myid);
   MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
   
-  /* initialize arrays */
-  if (myid == 0) {
-    recvbuffer = malloc(width*height*sizeof(int));
+  /* initialize recvbuffer */
+  if (myid == ROOT) {
+    recvbuffer = malloc(sizeof(int) * width * height);
     
     for (ix=0; ix<width; ++ix) {
       for (iy=0; iy<height; ++iy) {
@@ -116,77 +120,45 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  
-  if (type == 0 || type == 3) {
-    iterations = malloc(width*height*sizeof(int));
-    
-    for (ix=0; ix<width; ++ix) {
-      for (iy=0; iy<height; ++iy) {
-	iterations[ix*height+iy] = 0;
-      }
-    }
-  } else if (type == 1) {
-    iterations = malloc(height / numprocs * width * sizeof(int));
-    
-    for (ix=0; ix<width; ++ix) {
-      for (iy=0; iy<height / numprocs; ++iy) {
-	iterations[iy*height+ix] = 0;
-      }
-    }
-  } else if (type == 2) {
-    iterations = malloc(MASTER_BLOCKSIZE * MASTER_BLOCKSIZE * sizeof(int));
-    
-    for (ix=0; ix<MASTER_BLOCKSIZE; ++ix) {
-      for (iy=0; iy<MASTER_BLOCKSIZE; ++iy) {
-	iterations[iy*MASTER_BLOCKSIZE+ix] = 0;
-      }
-    }
-  }
-
-  //numprocs = 1;
-  //myid     = 0;
-
   /* start calculation */
   if(verbose) {
     printf("start calculation (x=%8.5g ..%8.5g,y=%10.7g ..%10.7g) ... \n",
            xmin,xmax,ymin,ymax);
     fflush(stdout);
   }
-  printf("Start (id = %d, #procs = %d)\n", myid, numprocs);
 
   st = esecond();
   switch(type) {
     case 0:
-      calcRow(iterations, recvbuffer, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter ); break;
+      calcRow(iterations, recvbuffer, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter, &mpitime, &waittime ); break;
     case 1:
-      calcBlock(iterations, recvbuffer, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter ); break;
+      calcBlock(iterations, recvbuffer, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter, &mpitime, &waittime ); break;
     case 2:
-      calcMaster(iterations, recvbuffer, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter ); break;
+      calcMaster(iterations, recvbuffer, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter, &mpitime, &waittime ); break;
     case 3:
-      if (myid == 0) { // single + serial
-	calc(iterations, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter );
+      if (myid == ROOT) { // single + serial
+	calc(recvbuffer, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter );
       }
-      recvbuffer = iterations;
       break;
   default:
       printf("Please use a type from 0-3!\n");
-      MPI_Abort(1, MPI_COMM_WORLD);
+      MPI_Abort(MPI_COMM_WORLD, type);
   }
   timeused = esecond()-st;
   calctime += timeused;
 
-  printf("Returned from calculation\n");
+  timeused = esecond()-st_total;
+  runtime += timeused;
 
   st = esecond();
-  //ppmwrite(iterations,width,height,0,maxiter,"mandelcol.ppm");
-  if (myid == 0) {
+  if (myid == ROOT) {
     ppmwrite(recvbuffer,width,height,0,maxiter,"mandelcol.ppm");
   }
 
   timeused = esecond()-st;
   iotime += timeused;
-  if(verbose) printf("PE%02d: calc=%7.4f,wait=%7.4f, io=%7.4f\n",
-                     myid,calctime,waittime,iotime);
+  if(verbose) printf("PE%02d: calc=%7.4f, mpi=%7.4f, wait=%7.4f, io=%7.4f, run=%7.4f\n",
+                     myid,calctime,mpitime,waittime,iotime,runtime);
 
   MPI_Finalize();
   exit(0);
@@ -221,11 +193,17 @@ void calc(int *iterations, int width, int height, int myid, int numprocs,
 }
 
 void calcRow(int *iterations, int *recvbuf, int width, int height, int myid, int numprocs,
-         double xmin, double xmax, double ymin, double ymax, int maxiter ) {
+	     double xmin, double xmax, double ymin, double ymax, int maxiter, double *mpitime, double *waittime ) {
   double dx,dy,x,y;
   int    ix,iy;
-  //MPI_type type;
-  
+  double st;
+
+  iterations = malloc(sizeof(int) * width * height);
+
+  for (int i = 0; i < width * height; i++) {
+    iterations[i] = 0;
+  }
+
   dx = (xmax - xmin) / width;
   dy = (ymax - ymin) / height;
 
@@ -247,24 +225,45 @@ void calcRow(int *iterations, int *recvbuf, int width, int height, int myid, int
     }
     y += dy*numprocs;
   }
-  
-  //MPI_Type_vector(height / numprocs, width, width * numprocs, MPI_INT, &type);
-  //MPI_Type_commit(&type);
-  //MPI_Reduce(&iterations[myid], recvbuf, 1, type, MPI_SUM, 0, MPI_COMM_WORLD);
-  //MPI_Type_free(&type);
-  MPI_Reduce(iterations, recvbuf, width * height, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+
+  st = esecond();
+  MPI_Barrier(MPI_COMM_WORLD);
+  *waittime = esecond()-st;
+
+  st = esecond();
+  MPI_Reduce(iterations, recvbuf, width * height, MPI_INT, MPI_SUM, ROOT, MPI_COMM_WORLD);
+  *mpitime = esecond()-st;
 }
 
 void calcBlock(int *iterations, int *recvbuf, int width, int height, int myid, int numprocs,
-         double xmin, double xmax, double ymin, double ymax, int maxiter ) {
+	       double xmin, double xmax, double ymin, double ymax, int maxiter, double *mpitime, double *waittime ) {
   double dx,dy,x,y;
   int    ix,iy;
+  double st;
+  int *recvcounts, *displs;
 
   dx = (xmax - xmin) / width;
   dy = (ymax - ymin) / height;
 
-  y = ymin + dy * myid * height/numprocs;
-  for (iy=0; iy<height/numprocs; ++iy) {
+  recvcounts = (int *) malloc(sizeof(int) * numprocs);
+  displs = (int *) malloc(sizeof(int) * numprocs);
+    
+  for (int i = 0; i < numprocs; i++) {
+    recvcounts[i] = height / numprocs * width;
+    if (i < height % numprocs) {
+      recvcounts[i] += width;
+    }
+    if (i > 0) {
+      displs[i] = displs[i-1] + recvcounts[i-1];
+    } else {
+      displs[i] = 0;
+    }
+  }
+  
+  iterations = (int *) malloc(sizeof(int) * recvcounts[myid]);
+
+  y = ymin + dy * displs[myid]/width;
+  for (iy=0; iy<recvcounts[myid]/width; ++iy) {
     x = xmin;
     for (ix=0; ix<width; ix++) {
       double zx=0.0,zy=0.0,zxnew;
@@ -281,73 +280,82 @@ void calcBlock(int *iterations, int *recvbuf, int width, int height, int myid, i
     }
     y += dy;
   }
-  
-  MPI_Gather(iterations, height/numprocs * width, MPI_INT, recvbuf, height/numprocs * width, MPI_INT, 0, MPI_COMM_WORLD);
+
+  st = esecond();
+  MPI_Barrier(MPI_COMM_WORLD);
+  *waittime = esecond()-st;
+
+  st = esecond();
+  MPI_Gatherv(iterations, recvcounts[myid], MPI_INT, recvbuf, recvcounts, displs, MPI_INT, ROOT, MPI_COMM_WORLD);
+  *mpitime = esecond()-st;
 }
 
 void calcMaster(int *iterations, int *recvbuf, int width, int height, int myid, int numprocs,
-         double xmin, double xmax, double ymin, double ymax, int maxiter ) {
+		double xmin, double xmax, double ymin, double ymax, int maxiter, double *mpitime, double *waittime ) {
   double dx,dy,x,y;
-  int    ix,iy,xoff,yoff;
-  int    inwork = 0;
-  int    *buffer;
-  int    curr;
-  int    cancel = - 1;
-  int    todo = (height * width) / (MASTER_BLOCKSIZE * MASTER_BLOCKSIZE);
+  double st;
+  int    ix,iy,xoff,yoff;  
+  int    blockID = 0;  
+  int    nBlocks = (height * width) / (MASTER_BLOCKSIZE * MASTER_BLOCKSIZE);
+  int    inwork = 0; // number of SLAVES calculating
+  int    cancel = - 1; // SLAVE release msg
   MPI_Status status;
 
-  printf("TEST (procs = %d)\n", numprocs);
-  buffer = malloc(sizeof(int) * (MASTER_BLOCKSIZE * MASTER_BLOCKSIZE + 1));
+  if (numprocs == 1) {
+    printf("There is no slave for master-slave type.\n");
+    MPI_Abort(MPI_COMM_WORLD, myid);
+  }
+
+  iterations = (int *) malloc(sizeof(int) * (MASTER_BLOCKSIZE * MASTER_BLOCKSIZE + 1)); // block-id + block
 
   dx = (xmax - xmin) / width;
   dy = (ymax - ymin) / height;
 
-  y = ymin;
-  curr = 0;
-
-  if (myid == 0) {
+  if (myid == ROOT) { // MASTER
 
     for (int i = 1; i < numprocs; i++) {
-      printf("MASTER: Initial work spreading\n");
-      MPI_Send(&curr, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-      curr++;
+      //MASTER initial work spreading
+      MPI_Send(&blockID, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+      blockID++;
       inwork++;
     } 
 
     while(inwork != 0) {
-      //printf("MASTER: waiting for more jobs. (cur=%d)\n", curr);
-      MPI_Recv(buffer, MASTER_BLOCKSIZE * MASTER_BLOCKSIZE + 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+      //MASTER waiting for more slaves
+      st = esecond();
+      MPI_Recv(iterations, MASTER_BLOCKSIZE * MASTER_BLOCKSIZE + 1, MPI_INT, MPI_ANY_SOURCE, TAG, MPI_COMM_WORLD, &status);
+      *mpitime += esecond()-st;
       inwork--;
 
-      xoff = (buffer[0] * MASTER_BLOCKSIZE % width);
-      yoff = (buffer[0] * MASTER_BLOCKSIZE/width) * MASTER_BLOCKSIZE * width;
+      xoff = (iterations[0] * MASTER_BLOCKSIZE % width);
+      yoff = (iterations[0] * MASTER_BLOCKSIZE / width) * MASTER_BLOCKSIZE * width;
       for (iy=0; iy<MASTER_BLOCKSIZE; ++iy) {
 	for (ix=0; ix<MASTER_BLOCKSIZE; ix++) {
-	  recvbuf[yoff+xoff+iy*width+ix] = buffer[iy*MASTER_BLOCKSIZE+ix+1];
+	  recvbuf[yoff+xoff+iy*width+ix] = iterations[iy*MASTER_BLOCKSIZE+ix+1];
 	}
       }
 
 
-      if (curr < todo) {
-	MPI_Send(&curr, 1, MPI_INT, status.MPI_SOURCE, 0, MPI_COMM_WORLD);
+      if (blockID < nBlocks) {
+	MPI_Send(&blockID, 1, MPI_INT, status.MPI_SOURCE, TAG, MPI_COMM_WORLD);
+	blockID++;
 	inwork++;
-	curr++;
       } else {
-	MPI_Send(&cancel, 1, MPI_INT, status.MPI_SOURCE, 0, MPI_COMM_WORLD);
+	MPI_Send(&cancel, 1, MPI_INT, status.MPI_SOURCE, TAG, MPI_COMM_WORLD);
       }
     }
-  } else {
+  } else { // SLAVE
     while(1) {
-      MPI_Recv(&curr, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+      MPI_Recv(&blockID, 1, MPI_INT, ROOT, 0, MPI_COMM_WORLD, &status);
 
-      if (curr == cancel) {
-	printf("Worker canceld\n");
+      if (blockID == cancel) {
+	//SLAVE canceld
 	break;
       }
 
-      y = (curr * MASTER_BLOCKSIZE / width) * MASTER_BLOCKSIZE * dy + ymin;
+      y = (blockID * MASTER_BLOCKSIZE / width) * MASTER_BLOCKSIZE * dy + ymin;
        for (iy=0; iy<MASTER_BLOCKSIZE; ++iy) {
-	 x = ((curr * MASTER_BLOCKSIZE) % width) * dx + xmin;
+	 x = ((blockID * MASTER_BLOCKSIZE) % width) * dx + xmin;
 	 for (ix=0; ix<MASTER_BLOCKSIZE; ix++) {
 	   double zx=0.0,zy=0.0,zxnew;
 	   int count = 0;
@@ -358,15 +366,21 @@ void calcMaster(int *iterations, int *recvbuf, int width, int height, int myid, 
 	     zx    = zxnew;
 	     ++count;
 	   }
-	   buffer[iy*MASTER_BLOCKSIZE+ix + 1] = count;
+	   iterations[iy*MASTER_BLOCKSIZE+ix+1] = count;
 	   x += dx;
 	 }
 	 y += dy;
        }
 
-       buffer[0] = curr;
+       iterations[0] = blockID;
 
-       MPI_Send(buffer, MASTER_BLOCKSIZE*MASTER_BLOCKSIZE + 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+       st = esecond();
+       MPI_Send(iterations, MASTER_BLOCKSIZE * MASTER_BLOCKSIZE + 1, MPI_INT, ROOT, TAG, MPI_COMM_WORLD);
+       *mpitime += esecond()-st;
     }
   }
+
+  st = esecond();
+  MPI_Barrier(MPI_COMM_WORLD);
+  *waittime = esecond()-st;
 }

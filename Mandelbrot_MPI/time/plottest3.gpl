@@ -1,0 +1,22 @@
+#set output  "pi.eps"
+#set terminal postscript eps color solid 12
+
+set xlabel "Process-ID"
+set ylabel "Time"
+
+set key l
+set title "(MPItime + Calctime) x Process-ID"
+
+#variables
+
+file = "speedtest3.dat"
+
+plot     file u 1:($2)  ti "Row" with linesp lw 1, \
+	 file u 1:($3)  ti "Block" with linesp lw 1, \
+	 file u 1:($4)  ti "Master-Slave" with linesp lw 1, \
+
+set term png
+set output "plot3.png"
+replot
+
+pause -1 "Hit return to continue"
