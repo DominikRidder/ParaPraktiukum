@@ -36,31 +36,63 @@ void MatrixMultiply(int n, double *A, double *B, double *C){
 /*  Function CannonMatrixMultiply                                             */
 /*   - multiplies two quadratic matrices based on Cannon's algorithm          */
 /******************************************************************************/
-void CannonMatrixMultiply(int n, double *A, double *B, double *C, 
+void CannonMatrixMultiply(int n, double *A, double *B, double *C, int blocksize,
                           int num_blocks, int mycoords[2], MPI_Comm comm_2d){
 
   int i;
   int right, left, up, down;
   int shiftsource, shiftdest;
+	int shiftcoords[2];
+	int* ndim[2];
   MPI_Status status;
 
-
+	MPI_Cartdim_get(comm_2d, ndim);
   /* TODO: compute ranks of all four neighbors */
+	//up
+	shiftcoords[0] = mycoords[0];
+	shiftcoords[1] = (mycoords[1]-1+ndim[0])%ndim[0];
+	MPI_Cart_rank(comm_2d, shiftcoords, &up);
+	//down
+	shiftcoords[0] = mycoords[0];
+	shiftcoords[1] = (mycoords[1]+1)%ndim[0];
+	MPI_Cart_rank(comm_2d, shiftcoords, &down);
+	//left
+	shiftcoords[0] = (mycoords[0]-1+ndim[0])%ndim[0];
+	shiftcoords[1] = mycoords[1];
+	MPI_Cart_rank(comm_2d, shiftcoords, &left);
+	//right
+	shiftcoords[0] = (mycoords[0]+1)%ndim[0];
+	shiftcoords[1] = mycoords[1];
+	MPI_Cart_rank(comm_2d, shiftcoords, &left);
 
   /* TODO: perform the initial matrix alignment for A and B */
+	for (i = 0; i < mycoords[1]; i++) {
+		MPI_Sendrecv_replace(locA, blocksize, MPI_DOUBLE, left, 45, right, 45, comm_2d, &status);
+	}
+	for (i = 0; i < mycoords[0]; i++) {
+		MPI_Sendrecv_replace(locB, blocksize, MPI_DOUBLE, up, 45, down, 45, comm_2d, &status);
+	}
 
   /* get into the main computation loop */
   for (i=0; i<num_blocks; ++i){
 
     /* TODO: compute C = C + A*B */
+	  MatrixMultiply(n, A, B, C);
 
     /* TODO: shift matrix A left by one */
+	  MPI_Sendrecv_replace(locA, blocksize, MPI_DOUBLE, left, 45, right, 45, comm_2d, &status);
 
     /* TODO: shift matrix B up by one */
+	  MPI_Sendrecv_replace(locB, blocksize, MPI_DOUBLE, up, 45, down, 45, comm_2d, &status);
   }
 
   /* TODO: restore the original distribution of A and B */
-
+	for (i = 0; i < mycoords[1]; i++) {
+		MPI_Sendrecv_replace(locA, blocksize, MPI_DOUBLE, right, 45, left, 45, comm_2d, &status);
+	}
+	for (i = 0; i < mycoords[0]; i++) {
+		MPI_Sendrecv_replace(locB, blocksize, MPI_DOUBLE, down, 45, up, 45, comm_2d, &status);
+	}
 }
 
 
@@ -120,7 +152,7 @@ int main(int argc, char *argv[])
 	MPI_Cart_coords(comm_2d, my_rank_2d, 2, mycoords);
 
   /* TODO: ALL PROCESSES: data type for the blockwise distribution of the matrices */
-	MPI_Type_vector(blocklen, blocklen, sqrt(num_blocks)*blocklen, MPI_DOUBLE, &blockmat);
+	MPI_Type_vector(blocklen, blocklen, num_blocks*blocklen, MPI_DOUBLE, &blockmat);
     MPI_Type_commit(&blockmat);
 
   /* MASTER: initialize matrices */
@@ -155,13 +187,12 @@ int main(int argc, char *argv[])
 	MPI_Request request;//TODO ?
     /* TODO: distribute matrices blockwise among processes*/
 	int start;
-	int block_sqrt = sqrt(num_blocks);
 	for (i = 0; i < num_procs; i++) {
-		start = i * blocklen + (i/block_sqrt) * blocklen*blocklen*blocklen;
+		start = i * blocklen + (i/num_blocks) * blocklen*blocklen*blocklen;
 		MPI_Isend(matA[start], 1, blockmat, i, 42, comm_2d, &request);
 	}
 	for (i = 0; i < num_procs; i++) {
-		start = i * blocklen + (i/block_sqrt) * blocklen*blocklen*blocklen;
+		start = i * blocklen + (i/num_blocks) * blocklen*blocklen*blocklen;
 		MPI_Isend(matB, 1, blockmat, i, 43, comm_2d, &request);
 	}
   }
@@ -196,7 +227,7 @@ int main(int argc, char *argv[])
     /* TODO: collect results */
 	  for (i = 0; i < blocklen; i++) {
 		  for (j = 0; j < blocklen; j++) {
-			 matC[j+sqrt(num_blocks)*i] = locC[i*N+j];
+			 matC[j+num_blocks*i] = locC[i*N+j];
 		  }
 	  }
 	  double* buffer = malloc(blocksize*sizeof(double));
@@ -204,7 +235,7 @@ int main(int argc, char *argv[])
 		  MPI_Recv(buffer, blocksize, MPI_DOUBLE, i, 44, comm_2d, &status);
 		  for (j = 0; j < blocklen; j++) {
 			  for (k = 0; k < blocklen; k++) {
-				 matC[k+sqrt(num_blocks)*j] = buffer[blocklen*i+j*N+k];
+				 matC[k+num_blocks*j] = buffer[blocklen*i+j*N+k];
 			  }
 		  }
 	  }
