@@ -43,7 +43,7 @@ void CannonMatrixMultiply(int n, double *A, double *B, double *C, int blocksize,
   int right, left, up, down;
   int shiftsource, shiftdest;
 	int shiftcoords[2];
-	int* ndim[2];
+	int ndim[2];
   MPI_Status status;
 
 	MPI_Cartdim_get(comm_2d, ndim);
@@ -67,10 +67,10 @@ void CannonMatrixMultiply(int n, double *A, double *B, double *C, int blocksize,
 
   /* TODO: perform the initial matrix alignment for A and B */
 	for (i = 0; i < mycoords[1]; i++) {
-		MPI_Sendrecv_replace(locA, blocksize, MPI_DOUBLE, left, 45, right, 45, comm_2d, &status);
+		MPI_Sendrecv_replace(A, blocksize, MPI_DOUBLE, left, 45, right, 45, comm_2d, &status);
 	}
 	for (i = 0; i < mycoords[0]; i++) {
-		MPI_Sendrecv_replace(locB, blocksize, MPI_DOUBLE, up, 45, down, 45, comm_2d, &status);
+		MPI_Sendrecv_replace(B, blocksize, MPI_DOUBLE, up, 45, down, 45, comm_2d, &status);
 	}
 
   /* get into the main computation loop */
@@ -80,18 +80,18 @@ void CannonMatrixMultiply(int n, double *A, double *B, double *C, int blocksize,
 	  MatrixMultiply(n, A, B, C);
 
     /* TODO: shift matrix A left by one */
-	  MPI_Sendrecv_replace(locA, blocksize, MPI_DOUBLE, left, 45, right, 45, comm_2d, &status);
+	  MPI_Sendrecv_replace(A, blocksize, MPI_DOUBLE, left, 45, right, 45, comm_2d, &status);
 
     /* TODO: shift matrix B up by one */
-	  MPI_Sendrecv_replace(locB, blocksize, MPI_DOUBLE, up, 45, down, 45, comm_2d, &status);
+	  MPI_Sendrecv_replace(B, blocksize, MPI_DOUBLE, up, 45, down, 45, comm_2d, &status);
   }
 
   /* TODO: restore the original distribution of A and B */
 	for (i = 0; i < mycoords[1]; i++) {
-		MPI_Sendrecv_replace(locA, blocksize, MPI_DOUBLE, right, 45, left, 45, comm_2d, &status);
+		MPI_Sendrecv_replace(A, blocksize, MPI_DOUBLE, right, 45, left, 45, comm_2d, &status);
 	}
 	for (i = 0; i < mycoords[0]; i++) {
-		MPI_Sendrecv_replace(locB, blocksize, MPI_DOUBLE, down, 45, up, 45, comm_2d, &status);
+		MPI_Sendrecv_replace(B, blocksize, MPI_DOUBLE, down, 45, up, 45, comm_2d, &status);
 	}
 }
 
@@ -145,7 +145,7 @@ int main(int argc, char *argv[])
   dims[1] = blocksize;
   periods[0] = 1;
   periods[1] = 1;
-	MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, 0, comm_2d);
+	MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, 0, &comm_2d);
  
   /* TODO: get rank and coordinates with respect to the new communicator */
 	MPI_Comm_rank(comm_2d, &my_rank_2d);
@@ -189,11 +189,11 @@ int main(int argc, char *argv[])
 	int start;
 	for (i = 0; i < num_procs; i++) {
 		start = i * blocklen + (i/num_blocks) * blocklen*blocklen*blocklen;
-		MPI_Isend(matA[start], 1, blockmat, i, 42, comm_2d, &request);
+		MPI_Isend(&matA[start], 1, blockmat, i, 42, comm_2d, &request);
 	}
 	for (i = 0; i < num_procs; i++) {
 		start = i * blocklen + (i/num_blocks) * blocklen*blocklen*blocklen;
-		MPI_Isend(matB, 1, blockmat, i, 43, comm_2d, &request);
+		MPI_Isend(&matB[start], 1, blockmat, i, 43, comm_2d, &request);
 	}
   }
 
@@ -201,7 +201,7 @@ int main(int argc, char *argv[])
   /*else{
 	
   }*/
-	MPI_Status status;//???
+	//MPI_Status status;//???
 	MPI_Recv(locA, 1, blockmat, 0, 42, comm_2d, &status);
 	MPI_Recv(locB, 1, blockmat, 0, 43, comm_2d, &status);
 
@@ -213,7 +213,7 @@ int main(int argc, char *argv[])
   /*********************************************************/
   /* ALL PROCESSES:   call funktion CannonMatrixMultiply() */
   /*********************************************************/
-  CannonMatrixMultiply(blocksize, locA, locB, locC, num_blocks, mycoords, comm_2d);
+  CannonMatrixMultiply(blocksize, locA, locB, locC, blocksize, num_blocks, mycoords, comm_2d);
 
 
   /* TODO: WORKER: send result to master */
