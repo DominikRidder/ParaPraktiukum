@@ -1,0 +1,64 @@
++ [[ hB != hxB ]]
++ echo 'Start of Lmod init/bash script to define the module command'
++ LMOD_PKG=/usr/local/software/lmod/lmod
++ LMOD_DIR=/usr/local/software/lmod/lmod/libexec
++ LMOD_CMD=/usr/local/software/lmod/lmod/libexec/lmod
++ MODULESHOME=/usr/local/software/lmod/lmod
++ export LMOD_PKG
++ export LMOD_CMD
++ export LMOD_DIR
++ export MODULESHOME
++ LMOD_VERSION=6.4.2
++ export LMOD_VERSION
++ '[' : '!=' : ']'
++ unalias ml
++ true
+++ echo YES
+++ /usr/bin/tr '[:upper:]' '[:lower:]'
++ export_module=yes
++ '[' -n '4.2.46(1)-release' -a yes '!=' no ']'
++ export -f module
++ export -f ml
++ unset export_module
++ '[' -n '' ']'
++ '[' 4 -ge 3 ']'
++ '[' -r /usr/local/software/lmod/lmod/init/lmod_bash_completions ']'
++ '[' -n '' ']'
++ [[ hB != hxB ]]
++ echo 'End of Lmod init/bash script to define the module command'
++ srun cannon
+Fatal error in MPI_Recv: Other MPI error, error stack:
+MPI_Recv(187).......: MPI_Recv(buf=0x1f3fbf0, count=1, dtype=USER<vector>, src=0, tag=42, comm=0x84000000, status=0x7ffdf0f4b8c8) failed
+mpid_irecv_done(101): read from socket failed - request state:recv(pde)doneFatal error in MPI_Recv: Other MPI error, error stack:
+MPI_Recv(187).......: MPI_Recv(buf=0x12c2230, count=1, dtype=USER<vector>, src=0, tag=42, comm=0x84000000, status=0x7ffd5915fa48) failed
+mpid_irecv_done(101): read from socket failed - request state:recv(pde)doneFatal error in MPI_Recv: Other MPI error, error stack:
+MPI_Recv(187).......: MPI_Recv(buf=0x2154410, count=1, dtype=USER<vector>, src=0, tag=43, comm=0x84000000, status=0x7ffe5021c9c8) failed
+mpid_irecv_done(101): read from socket failed - request state:recv(pde)doneFatal error in MPI_Recv: Other MPI error, error stack:
+MPI_Recv(187).......: MPI_Recv(buf=0x25dd050, count=1, dtype=USER<vector>, src=0, tag=43, comm=0x84000000, status=0x7ffeb63a88c8) failed
+mpid_irecv_done(101): read from socket failed - request state:recv(pde)doneFatal error in MPI_Recv: Other MPI error, error stack:
+MPI_Recv(187).......: MPI_Recv(buf=0xd5c010, count=1, dtype=USER<vector>, src=0, tag=43, comm=0x84000000, status=0x7ffe4432f7c8) failed
+mpid_irecv_done(101): read from socket failed - request state:recv(pde)doneFatal error in MPI_Recv: Other MPI error, error stack:
+MPI_Recv(187).......: MPI_Recv(buf=0x1480010, count=1, dtype=USER<vector>, src=0, tag=43, comm=0x84000000, status=0x7ffe05fdda48) failed
+mpid_irecv_done(101): read from socket failed - request state:recv(pde)doneFatal error in MPI_Recv: Other MPI error, error stack:
+MPI_Recv(187).......: MPI_Recv(buf=0xdfed10, count=1, dtype=USER<vector>, src=0, tag=43, comm=0x84000000, status=0x7ffe5e8dd8c8) failed
+mpid_irecv_done(101): read from socket failed - request state:recv(pde)doneFatal error in MPI_Recv: Other MPI error, error stack:
+MPI_Recv(187).......: MPI_Recv(buf=0x2167850, count=1, dtype=USER<vector>, src=0, tag=43, comm=0x84000000, status=0x7fff117bb6c8) failed
+mpid_irecv_done(101): read from socket failed - request state:recv(pde)doneFatal error in MPI_Recv: Other MPI error, error stack:
+MPI_Recv(187).......: MPI_Recv(buf=0x111afd0, count=1, dtype=USER<vector>, src=0, tag=43, comm=0x84000000, status=0x7ffd3d54a4c8) failed
+mpid_irecv_done(101): read from socket failed - request state:recv(pde)doneFatal error in MPI_Recv: Other MPI error, error stack:
+MPI_Recv(187).......: MPI_Recv(buf=0x820010, count=1, dtype=USER<vector>, src=0, tag=43, comm=0x84000000, status=0x7ffe1650cac8) failed
+mpid_irecv_done(101): read from socket failed - request state:recv(pde)doneFatal error in MPI_Recv: Other MPI error, error stack:
+MPI_Recv(187).......: MPI_Recv(buf=0x1c71e10, count=1, dtype=USER<vector>, src=0, tag=43, comm=0x84000000, status=0x7fff9eca9cc8) failed
+mpid_irecv_done(101): read from socket failed - request state:recv(pde)doneFatal error in MPI_Recv: Other MPI error, error stack:
+MPI_Recv(187).......: MPI_Recv(buf=0xf3b050, count=1, dtype=USER<vector>, src=0, tag=43, comm=0x84000000, status=0x7fffb67e1048) failed
+mpid_irecv_done(101): read from socket failed - request state:recv(pde)doneFatal error in MPI_Recv: Other MPI error, error stack:
+MPI_Recv(187).......: MPI_Recv(buf=0xe28010, count=1, dtype=USER<vector>, src=0, tag=43, comm=0x84000000, status=0x7ffe715c08c8) failed
+mpid_irecv_done(101): read from socket failed - request state:recv(pde)doneFatal error in MPI_Recv: Other MPI error, error stack:
+MPI_Recv(187).......: MPI_Recv(buf=0x22a0390, count=1, dtype=USER<vector>, src=0, tag=43, comm=0x84000000, status=0x7ffdc3d2bec8) failed
+mpid_irecv_done(101): read from socket failed - request state:recv(pde)doneFatal error in MPI_Recv: Other MPI error, error stack:
+MPI_Recv(187).......: MPI_Recv(buf=0x1b22b50, count=1, dtype=USER<vector>, src=0, tag=43, comm=0x84000000, status=0x7ffe8e570148) failed
+mpid_irecv_done(101): read from socket failed - request state:recv(pde)donesrun: error: jrc1668: tasks 1-7: Terminated
+srun: error: jrc1668: task 0: Segmentation fault
+srun: error: jrc1669: tasks 8-14: Terminated
+srun: error: jrc1669: task 15: Exited with exit code 1
+srun: Force Terminated job step 3058100.0
