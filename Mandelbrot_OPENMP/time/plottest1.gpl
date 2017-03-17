@@ -1,0 +1,23 @@
+#set output  "pi.eps"
+#set terminal postscript eps color solid 12
+
+set xlabel "#processes"
+set ylabel "Runtime"
+
+set key l
+set title "Runtime x #processes"
+
+#variables
+
+file = "speedtest1.dat"
+
+plot    file u 1:($2)  ti "static,1" with linesp lw 1, \
+	file u 1:($3)  ti "dynamic" with linesp lw 1, \
+	file u 1:($4)  ti "guided" with linesp lw 1, \
+	file u 1:($5)  ti "auto" with linesp lw 1, \
+
+set term png
+set output "plot1.png"
+replot
+
+#pause -1 "Hit return to continue" # keine pause bei mir -> weiter zum pushen

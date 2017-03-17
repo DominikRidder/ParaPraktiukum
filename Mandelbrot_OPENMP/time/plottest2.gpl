@@ -1,0 +1,25 @@
+#set output  "pi.eps"
+#set terminal postscript eps color solid 12
+
+set xlabel "#processes"
+set ylabel "Runtime / #processes"
+
+set key l
+set title "Strong Scaling x #processes"
+
+#variables
+
+file = "speedtest2.dat"
+
+seq = 14.3034
+
+plot    file u 1:(seq/$2)  ti "static,1" with linesp lw 1, \
+	file u 1:(seq/$3)  ti "dynamic" with linesp lw 1, \
+	file u 1:(seq/$4)  ti "guided" with linesp lw 1, \
+	file u 1:(seq/$5)  ti "auto" with linesp lw 1, \
+
+set term png
+set output "plot2.png"
+replot
+
+#pause -1 "Hit return to continue"

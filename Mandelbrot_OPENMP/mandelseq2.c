@@ -7,7 +7,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <unistd.h>
-#include <ppmwrite.h>
+#include "ppmwrite.h"
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -54,9 +54,11 @@ int main(int argc, char *argv[]) {
 
   int    numprocs,myid;
   int    i;
-  double st,timeused,calctime=0.0, waittime=0.0, iotime=0.0;
+  double st,st_total,timeused;
+  double calctime=0.0, iotime=0.0, mpitime=0.0, runtime=0.0;
   char   filename[1024];
 
+  st_total = esecond();
   ppminitsmooth(1);
 
   /* parse command line */
@@ -95,7 +97,7 @@ int main(int argc, char *argv[]) {
   }
 
   /* initialize arrays */
-  iterations = malloc(width*height*sizeof(int));
+  iterations = (int *) malloc(width*height*sizeof(int));
 
   for (ix=0; ix<width; ++ix) {
     for (iy=0; iy<height; ++iy) {
@@ -103,8 +105,14 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  numprocs = 1;
-  myid     = 0;
+#ifdef _OPENMP
+#pragma omp parallel
+	numprocs = omp_get_num_threads();
+	myid = omp_get_thread_num();
+#else
+	numprocs = 1;
+	myid=0;
+#endif
 
 
   /* start calculation */
@@ -116,17 +124,19 @@ int main(int argc, char *argv[]) {
 
   st = esecond();
   calc(iterations, width, height, myid, numprocs, xmin, xmax, ymin, ymax, maxiter );
-  timeused = esecond()-st;
+  timeused = esecond()-st; 
   calctime += timeused;
 
+  timeused = esecond()-st_total;
+  runtime += timeused;
 
   st = esecond();
   ppmwrite(iterations,width,height,0,maxiter,"mandelcol.ppm");
 
   timeused = esecond()-st;
   iotime += timeused;
-  if(verbose) printf("PE%02d: calc=%7.4f,wait=%7.4f, io=%7.4f\n",
-                     myid,calctime,waittime,iotime);
+  if(verbose) printf("PE%02d: calc=%7.4f, mpi=%7.4f, io=%7.4f, run=%7.4f\n",
+		      myid,calctime,mpitime,iotime,runtime);
 
   exit(0);
 }
@@ -135,14 +145,20 @@ int main(int argc, char *argv[]) {
 void calc(int *iterations, int width, int height, int myid, int numprocs,
          double xmin, double xmax, double ymin, double ymax, int maxiter ) {
   double dx,dy,x,y;
-  int    ix,iy;
+  int    ix,iy,lastiy;
+  lastiy=0;
 
   dx = (xmax - xmin) / width;
   dy = (ymax - ymin) / height;
 
   y = ymin;
-#pragma omp parallel for private(x, y)
+#ifdef _OPENMP
+#pragma omp parallel for schedule(runtime) private(x, ix) firstprivate(lastiy, y)
+#endif
   for (iy=0; iy<height; ++iy) {
+    y += dy*(iy-lastiy); // updating y with more than 1 step if needed
+    lastiy = iy; 
+
     x = xmin;
     for (ix=0; ix<width; ix++) {
       double zx=0.0,zy=0.0,zxnew;
@@ -157,6 +173,6 @@ void calc(int *iterations, int width, int height, int myid, int numprocs,
       iterations[iy*width+ix] = count;
       x += dx;
     }
-    y += dy;
+    //y += dy;
   }
 }
